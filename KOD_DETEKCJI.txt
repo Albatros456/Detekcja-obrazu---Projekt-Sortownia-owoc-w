@@ -1,0 +1,141 @@
+#UWAGA KOD JEST PODZIELONY NA BLOKI, PROJEKTOWANY W ŚRODOWISKU KAGGLE
+
+
+
+
+!pip install ultralytics torch torchvision torchaudio opencv-python numpy matplotlib pandas pyyaml tqdm
+
+
+
+
+
+from ultralytics import YOLO
+from pathlib import Path
+import cv2, os, yaml, random
+import matplotlib.pyplot as plt
+import pandas as pd
+
+
+
+
+
+
+
+
+from pathlib import Path
+import yaml
+
+data_root = Path("/kaggle/input/owoceyolo/OwoceYOLO")
+
+class_names = [
+    'fresh_apple',      # 0
+    'apple_stem',       # 1
+    'rotten_apple',     # 2
+    'fresh_banana',     # 3
+    'rotten_banana',    # 4
+    'fresh_orange',     # 5
+    'rotten_orange'     # 6
+]
+
+fruit_yaml = {
+    'path': str(data_root),
+    'train': 'images/train',
+    'val': 'images/val',
+    'names': {i: n for i, n in enumerate(class_names)}
+}
+
+with open('fruit.yaml', 'w') as f:
+    yaml.safe_dump(fruit_yaml, f, sort_keys=False)
+
+print(open('fruit.yaml').read())
+
+
+
+
+
+from pathlib import Path
+
+data_root = Path("/kaggle/input/owoceyolo/OwoceYOLO")
+
+for split in ['train', 'val']:
+    img_dir = data_root / 'images' / split
+    lbl_dir = data_root / 'labels' / split
+
+    num_imgs = len(list(img_dir.glob('*')))
+    num_lbls = len(list(lbl_dir.glob('*')))
+
+    print(f"{split}: images = {num_imgs}, labels = {num_lbls}")
+
+
+
+
+
+from ultralytics import YOLO
+
+model = YOLO("yolov8n.pt")
+
+results = model.train(
+    data="fruit.yaml",
+    epochs=50,
+    imgsz=640,
+    batch=16,
+    lr0=0.01,
+    patience=20,
+    device=0
+)
+
+
+
+
+
+val_metrics = model.val()
+print(val_metrics)
+
+
+
+
+
+from IPython.display import Image, display
+import glob
+
+for path in glob.glob("runs/detect/train*/val_batch*.jpg"):
+    display(Image(filename=path))
+
+
+
+
+
+
+from ultralytics import YOLO
+import torch
+
+REJECT_CLASSES = {
+    'rotten_apple',
+    'rotten_banana',
+    'rotten_orange'
+}
+
+WARN_CLASSES = {
+    'apple_stem'
+}
+
+CONF_THRESH = 0.5
+
+def decide_acceptance(result):
+    reject, warn = False, False
+    for b in result.boxes:
+        cls = int(b.cls.cpu().numpy())
+        cls_name = result.names[cls]
+        conf = float(b.conf.cpu().numpy())
+
+        if conf >= CONF_THRESH:
+            if cls_name in REJECT_CLASSES:
+                reject = True
+            elif cls_name in WARN_CLASSES:
+                warn = True
+
+    if reject:
+        return "REJECT"
+    elif warn:
+        return "ACCEPT_WITH_WARNING"
+    return "ACCEPT"
